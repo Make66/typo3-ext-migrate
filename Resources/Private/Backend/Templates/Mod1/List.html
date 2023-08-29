@@ -1,0 +1,103 @@
+{namespace tt=Taketool\Tool\ViewHelpers}
+
+<f:layout name="Default" />
+
+<f:section name="content">
+
+    <h1>Kurstool Configs ({configs->f:count()})</h1>
+    <f:comment>
+        <f:debug title="Mod1/List.html">{config}</f:debug>
+    <f:link.action action="list" arguments="{interface:null}" class="btn btn-default btn-active">[Alle]</f:link.action>
+    <f:link.action action="list" arguments="{interface:0}" class="btn btn-default">Cotasx</f:link.action>
+    <f:link.action action="list" arguments="{interface:1}" class="btn btn-default">GUI3</f:link.action>
+    <f:link.action action="list" arguments="{interface:2}" class="btn btn-default">Nimbus</f:link.action>
+    <f:link.action action="list" arguments="{interface:4}" class="btn btn-default">KurseT3</f:link.action>
+    </f:comment>
+    <f:comment>
+    <f:form>
+        Mandant <f:form.textfield id="findmandant"></f:form.textfield>
+    </f:form>
+    </f:comment>
+    <f:if condition="{configs}">
+        <table class="table">
+            <tr>
+                <th>&nbsp;</th>
+                <th>Mandant</th>
+                <f:comment><th>#Kurse</th></f:comment>
+                <th>Salsa</th>
+                <th>Initials</th>
+                <th>Color</th>
+                <th>Standorte</th>
+                <th>auf Seite</th>
+                <th>RechtstexteURL</th>
+                <th>Aktualisiert</th>
+                <th></th>
+            </tr>
+
+        <f:for each="{configs}" as="config">
+            <tr id="{config.mandant}">
+                <td style="background-color:{config.status}">&nbsp;</td>
+                <td><f:link.action action="showRawData" arguments="{configPid:config.pid,configUid:config.uid}" class="">{config.mandant}</f:link.action></td>
+                <td>{config.salsa_allowed}</td>
+                <td>{config.salsa_initials}</td>
+                <td>{config.salsa_color}</td>
+                <td>{config.locxlate}</td>
+                <f:comment><td>{config.countCourse}</td></f:comment>
+                <td>[{config.pid}] <a href="https://www.{config._page.title}" target="_blank">{config._page.title}</a></td>
+                <td>{config.rechtstexteurl}</td>
+                <td><f:format.date format="d.m.Y H:i:s">{config.lastupdate}</f:format.date></td>
+                <td>
+                    <f:if condition="{config.uid}">
+                        <f:then>
+
+                            <div class="btn-group" role="group">
+                                <a title="Open" class="btn btn-default" href="{tt:be.editRecord(parameters: 'edit[tx_tool_domain_model_config][{config.uid}]=edit',id: pageId)}">
+                                    <core:icon identifier="actions-open"/>
+                                </a>
+                            &nbsp;
+                            <f:link.action action="show" arguments="{configPid:config.pid,configUid:config.uid}" class="btn btn-default">
+                                <i class="fa fa-eye" title="Anzeigen"></i>
+                            </f:link.action>
+                            &nbsp;
+                            <f:if condition="{config.interface} != 2">
+                            <f:link.action action="submitData" arguments="{configPid:config.pid,configUid:config.uid}" class="btn btn-default">
+                                <i class="fa fa-motorcycle" title="Anmeldungen übertragen"></i>
+                            </f:link.action>
+                            </f:if>
+
+                            <f:link.action action="validateData" arguments="{configPid:config.pid,configUid:config.uid}" class="btn btn-default">
+                                <i class="fa fa-check" title="Daten prüfen"></i>
+                            </f:link.action>
+                            &nbsp;
+                            <f:if condition="{config.interface} == 2">
+                                <f:link.action action="importNimbuscloudData"
+                                               arguments="{configPid:config.pid,configUid:config.uid}"
+                                               class="btn btn-default">
+                                    Nimbuscloud importieren
+                                </f:link.action>
+                            </f:if>
+                            <f:if condition="{config.interface} == 3 ">
+                                <f:link.action action="importMicrotangoData"
+                                               arguments="{configPid:config.pid,configUid:config.uid}"
+                                               class="btn btn-default">
+                                    Microtango importieren
+                                </f:link.action>
+                            </f:if>
+                            <f:if condition="{config.interface} == 4 ">
+                                <f:link.action action="importKurseT3Data"
+                                               arguments="{configUid:config.uid}"
+                                               class="btn btn-default">
+                                    KurseT3 importieren
+                                </f:link.action>
+                            </f:if>
+                            </div>
+                        </f:then>
+
+                    </f:if>
+                </td>
+            </tr>
+        </f:for>
+
+        </table>
+    </f:if>
+</f:section>

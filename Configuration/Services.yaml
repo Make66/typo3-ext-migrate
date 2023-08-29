@@ -1,0 +1,41 @@
+services:
+  _defaults:
+    autowire: true
+    autoconfigure: true
+    public: false
+
+  Taketool\Migrate\Command\Cal2DatetimeCommand:
+    tags:
+      - {
+        name: 'console.command',
+        command: 'migrate:cal',
+        schedulable: false,
+        description: 'Migrates Calendarize ts to datetime (only for calendarize <v6.0.0!)'
+      }
+
+  Taketool\Migrate\Command\FlexFormsCommand:
+    tags:
+      - {
+        name: 'console.command',
+        command: 'migrate:flexforms',
+        schedulable: false,
+        description: 'Migrates Flexforms'
+      }
+
+  Taketool\Migrate\Command\TcaCommand:
+    tags:
+      - {
+        name: 'console.command',
+        command: 'migrate:tca',
+        schedulable: false,
+        description: 'Migrates TCA'
+      }
+
+  Taketool\Migrate\Command\TemplatesCommand:
+    tags:
+      - {
+        name: 'console.command',
+        command: 'migrate:templates',
+        schedulable: false,
+        description: 'Migrates Typo3v10 templates to v11: templates, element layout'
+      }

@@ -8,8 +8,8 @@ defined('TYPO3') || die();
         'mod1',
         '',
         [
-            \Taketool\Migrate\Controller\Mod1ControllerController::class => 'index',
-            
+            \Taketool\Migrate\Controller\Mod1Controller::class => 'index',
+
         ],
         [
             'access' => 'user,group',

@@ -1,0 +1,53 @@
+{
+    "modules": [],
+    "properties": {
+        "backendModules": [
+            {
+                "actions": {
+                    "controllerActionCombinations": "Mod1Controller => index"
+                },
+                "description": "Backend Module description for mod1",
+                "key": "mod1",
+                "mainModule": "tools",
+                "name": "Mod1",
+                "tabLabel": "Tab lable"
+            }
+        ],
+        "description": "Toolset for supporting Typo3 migrations by rewriting templates, folders, files using commands or migration wizards.",
+        "emConf": {
+            "category": "be",
+            "custom_category": "",
+            "dependsOn": "typo3 => 10.4.0-11.5.99\n",
+            "disableLocalization": true,
+            "disableVersioning": true,
+            "generateDocumentationTemplate": true,
+            "generateEditorConfig": true,
+            "generateEmptyGitRepository": true,
+            "sourceLanguage": "en",
+            "state": "alpha",
+            "targetVersion": "11.5.0-11.5.99",
+            "version": "1.0.0"
+        },
+        "extensionKey": "migrate",
+        "name": "Migration Toolkit",
+        "originalExtensionKey": "",
+        "originalVendorName": "",
+        "persons": [
+            {
+                "company": "Taketool GmbH",
+                "email": "martin.keller@taketool.de",
+                "name": "Martin Keller",
+                "role": "Developer"
+            }
+        ],
+        "plugins": [],
+        "vendorName": "Taketool"
+    },
+    "wires": [],
+    "storagePath": "\/home\/v11.taketool.net\/packages\/",
+    "log": {
+        "last_modified": "2023-08-29 12:28",
+        "extension_builder_version": "v11.0.10",
+        "be_user": " (1)"
+    }
+}

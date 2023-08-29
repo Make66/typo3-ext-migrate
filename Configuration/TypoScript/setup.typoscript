@@ -1,0 +1,15 @@
+
+# Module configuration
+module.tx_migrate_tools_migratemod1 {
+    persistence {
+        storagePid = {$module.tx_migrate_mod1.persistence.storagePid}
+    }
+    view {
+        templateRootPaths.0 = EXT:migrate/Resources/Private/Backend/Templates/
+        templateRootPaths.1 = {$module.tx_migrate_mod1.view.templateRootPath}
+        partialRootPaths.0 = EXT:migrate/Resources/Private/Backend/Partials/
+        partialRootPaths.1 = {$module.tx_migrate_mod1.view.partialRootPath}
+        layoutRootPaths.0 = EXT:migrate/Resources/Private/Backend/Layouts/
+        layoutRootPaths.1 = {$module.tx_migrate_mod1.view.layoutRootPath}
+    }
+}

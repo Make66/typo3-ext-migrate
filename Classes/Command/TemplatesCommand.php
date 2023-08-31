@@ -65,9 +65,8 @@ class TemplatesCommand extends Command
             context: Production
             composerMode: true
          */
-        return 0;
 
-        // becomes s/t like "/home/test.taketool.eu"
+        // becomes s/t like "/home/test.taketool.eu/public"
         $this->publicPath = $environment->getPublicPath();
         $localConfPath = $this->publicPath.'/typo3conf/LocalConfiguration.php';
 
@@ -88,13 +87,28 @@ class TemplatesCommand extends Command
         $this->getAllRootPages();
 
         // migration
-        $this->includeStatics();
-        $this->includeCss();
-        $this->themeCSS();
-        // v12: $this->layoutGallery();
-        // v12: $this->tsConfig();
+        $this->themeScss();
+        $this->globalScss();
+        $this->layoutGallery();
+        $this->layoutRolloverImage();
+        $this->sysFile();
+
+        // do not call twice
+        $this->tsConfig();
+
+
+        //$this->includeStatics();
+        //$this->includeCss();
 
         return 0; // T3v10: Command::SUCCESS;
+    }
+
+    /**
+     * Configure the command by defining the name, options and arguments
+     */
+    protected function configure()
+    {
+        $this->setHelp('Migrates various T3v9 content settings to match v10 changes');
     }
 
     private function getAllRootPages()
@@ -223,13 +237,12 @@ class TemplatesCommand extends Command
         $this->io->writeln('  -> DONE ('.$cnt.' elements)'."\n");
     }
 
-    /*
+    /**
      * all tt_content records that contain 'galerie' in field layout,
      * set field layout to '0' and frame_layout to 'galerie'
      */
     private function layoutGallery()
     {
-        return;
         $this->io->writeln('nur Boostrap_Package 12.x: Migrating tt_content layoutGallery()');
         $res = $this->db->query("SELECT uid,layout,frame_layout FROM tt_content WHERE layout='galerie'");
         $galleries = $res->fetch_all(MYSQLI_ASSOC);
@@ -244,13 +257,33 @@ class TemplatesCommand extends Command
         $this->io->writeln('  -> DONE ('.$cnt.' elements)'."\n");
     }
 
-    /*
+    /**
+     * all tt_content records that contain 'rollover_image' in field layout,
+     * set field layout to '0' and frame_layout to 'rollover_image'
+     */
+    private function layoutRolloverImage()
+    {
+        $this->io->writeln('nur Boostrap_Package 12.x: Migrating tt_content layoutGallery()');
+        $res = $this->db->query("SELECT uid,layout,frame_layout FROM tt_content WHERE layout='rollover_image'");
+        $rollovers = $res->fetch_all(MYSQLI_ASSOC);
+        $cnt = 0;
+        foreach($rollovers as $rollover)
+        {
+            //\nn\t3::debug($rollover); die();
+            $res = $this->db->query("UPDATE tt_content SET layout='0', frame_layout='rollover_image' WHERE uid=".$rollover['uid']);
+            if ($res === false) $this->io->writeln($this->db->error);
+            $cnt++;
+        }
+        $this->io->writeln('  -> DONE ('.$cnt.' elements)'."\n");
+    }
+
+
+    /**
      * add line 'TCEFORM.tt_content.frame_layout.addItems.galerie = Galerie' to page TSconfig
      * add line 'TCEFORM.tt_content.frame_layout.addItems.rollover_image = Bild mit Hover-Effekt' to page TSconfig
      */
     private function tsConfig()
     {
-        return;
         $this->io->writeln('nur Boostrap_Package 12.x: Migrating TSconfig adding galerie and rollover_image types');
         $cnt = 0;
 
@@ -274,11 +307,35 @@ class TemplatesCommand extends Command
     }
 
     /**
-     * Configure the command by defining the name, options and arguments
+     * adapts path's in global.scss
+     *
      */
-    protected function configure()
+    private function globalScss()
     {
-        $this->setHelp('Migrates various T3v9 content settings to match v10 changes');
+        $this->io->writeln('Corrects path\'s in global.scss');
+        $globalScssPath = $this->publicPath . '/fileadmin//templates/ext/bootstrap_package/Resources/Public/Scss/Theme/global.scss';
+        $replace = [
+            '/fileadmin/templates/tx_' => '/fileadmin/templates/ext/',
+        ];
+
+        if (file_exists($globalScssPath))
+        {
+            $globalScssContent = file_get_contents($globalScssPath);
+            $newContent = $globalScssContent;
+            foreach ($replace as $search=>$repl)
+            {
+                $newContent = str_replace($search, $repl, $newContent);
+            }
+            $handle = fopen($globalScssPath, "w");
+            if ($handle === false)
+            {
+                $this->io->writeln('   ! error opening file ' . $globalScssPath . "\n");
+            } else {
+                fwrite($handle, $newContent);
+                fclose($handle);
+                $this->io->writeln('   processed file ' . $globalScssPath . "\n");
+            }
+        }
     }
 
     /**
@@ -288,32 +345,36 @@ class TemplatesCommand extends Command
      *  @ import "../bootstrap_package/Resources/Public/Scss/Theme/global";
      *  @ import "bootstrap_package/Resources/Public/Scss/Theme/custom";
      */
-    private function themeCSS()
+    private function themeScss()
     {
         $this->io->writeln('Create a theme.css for every mandant');
-        $path = $this->projectPath . '/public/fileadmin/templates';
+        $path = $this->publicPath . '/fileadmin/templates';
         $d = dir($path);
 
+        /*
         $customToDelete = [
             '@import "typo3conf/ext/bootstrap_package/Resources/Public/Contrib/bootstrap4/scss/_functions.scss";',
             '@import "typo3conf/ext/bootstrap_package/Resources/Public/Contrib/bootstrap4/scss/_variables.scss";',
             '@import "typo3conf/ext/bootstrap_package/Resources/Public/Contrib/bootstrap4/scss/mixins/_breakpoints.scss";',
         ];
+        */
         $imports =
-             '@import "../../../typo3conf/ext/bootstrap_package/Resources/Public/Scss/Theme/theme";'."\n"
-             .'@import "../bootstrap_package/Resources/Public/Scss/Theme/global";'."\n"
-             .'@import "bootstrap_package/Resources/Public/Scss/Theme/custom";'."\n";
+            '@import "../../../typo3conf/ext/bootstrap_package/Resources/Public/Scss/bootstrap5/theme";'."\n"
+            .'@import "../../../fileadmin/templates/ext/bootstrap_package/Resources/Public/Scss/Theme/global";'."\n"
+            .'@import "./bootstrap_package/Resources/Public/Scss/Theme/custom";'."\n";
 
         $this->io->writeln( "     Path: " . $d->path);
         $cnt = 0;
         while (false !== ($mandant = $d->read())) {
 
-            // create theme.scss
+            /*
+             *  create theme.scss and insert standard imports
+             */
             $themePath = $path.'/'.$mandant;
             $skipDot = substr($mandant,0,1) === '.';
             $skipUl = substr($mandant,0,1) === '_';
-            $skipTx = substr($mandant,0,3) === 'tx_';
-            if ($skipUl || $skipDot || $skipTx) continue;
+            $skipExt = substr($mandant,0,3) === 'ext';
+            if ($skipUl || $skipDot || $skipExt) continue;
             if (file_exists($themePath))
             {
                 $filepath = $themePath.'/theme.scss';
@@ -330,8 +391,10 @@ class TemplatesCommand extends Command
                 //unlink($path.'/'.$entry.'/theme.css');
             }
 
-            // custom.scss clean up
-            $customPath = $this->projectPath . "/public/fileadmin/templates/$mandant/bootstrap_package/Resources/Public/Scss/Theme/custom.scss";
+            /*
+             * custom.scss clean up
+
+            $customPath = $this->publicPath . "/fileadmin/templates/$mandant/bootstrap_package/Resources/Public/Scss/Theme/custom.scss";
             if (file_exists($customPath))
             {
                 $this->io->writeln('     processing '.$customPath);
@@ -368,21 +431,50 @@ class TemplatesCommand extends Command
                 rmdir($customPath);
             }
             // update sys_file for /_img/
-            /*
-             UPDATE sys_file f
-                SET f.identifier = REPLACE (f.identifier, '/_img/', '/img/')
-                WHERE f.identifier LIKE '%/_img/%'
-                Select identifier from sys_file where identifier like '%stroh/img/%' limit 50;
-             */
+            // UPDATE sys_file f
+            //    SET f.identifier = REPLACE (f.identifier, '/_img/', '/img/')
+            //    WHERE f.identifier LIKE '%/_img/%'
+            //    Select identifier from sys_file where identifier like '%stroh/img/%' limit 50;
             $sql = "UPDATE sys_file f
                     SET f.identifier = REPLACE (f.identifier, '/_img/', '/img/')
                     WHERE f.identifier LIKE '%/_img/%'";
             $res = $this->db->query($sql);
-
+            */
             $cnt++;
         }
         $d->close();
         $this->io->writeln('  -> DONE ('.$cnt.' elements)'."\n");
+    }
+
+    /**
+     * when the path of files change, sys_file needs to know the new identifier
+     *
+     * @return void
+     */
+    private function sysFile()
+    {
+        // old => new
+        $replaces = [
+            '/templates/bootstrap_package/' => '/templates/ext/bootstrap_package/',
+            '/templates/_bootstrap_package/' => '/templates/ext/bootstrap_package/',
+        ];
+
+        $this->io->writeln('Update path information in sys_file');
+        $cnt = 0;
+        foreach($replaces as $search=>$repl)
+        {
+            // UPDATE sys_file f
+            //    SET f.identifier = REPLACE (f.identifier, '/_img/', '/img/')
+            //    WHERE f.identifier LIKE '%/_img/%'
+            //    Select identifier from sys_file where identifier like '%stroh/img/%' limit 50;
+            $sql = "UPDATE sys_file f
+                    SET f.identifier = REPLACE (f.identifier, '$search', '$repl')
+                    WHERE f.identifier LIKE '%$search%'";
+            $res = $this->db->query($sql);
+            $cnt += $res->num_rows;
+        }
+        $this->io->writeln('  -> DONE ('.$cnt.' elements)'."\n");
+
     }
 
 }

@@ -15,6 +15,9 @@
     "require-dev": {
         "typo3/testing-framework": "^6.9.0"
     },
+	"suggest": {
+		"ext-mysqli": ""
+	},
     "autoload": {
         "psr-4": {
             "Taketool\\Migrate\\": "Classes"

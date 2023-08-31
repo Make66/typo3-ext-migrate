@@ -37,5 +37,5 @@ services:
         name: 'console.command',
         command: 'migrate:templates',
         schedulable: false,
-        description: 'Migrates Typo3v10 templates to v11: templates, element layout'
+        description: 'Migrates Bootstrap 4 templates to 5'
       }

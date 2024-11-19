@@ -26,6 +26,13 @@ class TemplatesCommand extends Command
     private array $rootPages;
     private array $rootTemplates;
 
+    /**
+     * Configure the command by defining the name, options and arguments
+     */
+    protected function configure()
+    {
+        $this->setHelp('Migrates root templates to meet v11 requirements');
+    }
 
     /**
      * Executes the command
@@ -80,8 +87,6 @@ class TemplatesCommand extends Command
         // init; returns array of rootpage id's
         $this->getAllRootPages();
 
-        //$this->io->writeln(serialize($this->rootPages));
-
         // migration
         $this->removeBasedOn();
         $this->addSitepackage();
@@ -90,11 +95,71 @@ class TemplatesCommand extends Command
     }
 
     /**
-     * Configure the command by defining the name, options and arguments
+     * remove "Basis Setup (sys_template_24)" from 'basedOn' if exists
+     * @return void
      */
-    protected function configure()
+    private function removeBasedOn() {
+        $this->io->section('Migrating root templates: remove "Basis Setup (sys_template_24)" from basedOn if exists');
+        $remove = '24';  // sys_template_24
+        $this->getAllRootTemplates();
+
+        $cnt = 0;
+        foreach ($this->rootTemplates as $template)
+        {
+            $altered = false;
+            if (!empty($template['basedOn'])) {
+                $basedOn = explode(',', $template['basedOn']);
+                $key = array_search($remove, $basedOn);
+                //$this->io->writeln($template['pid'] . ':' . $template['basedOn'] . '[' . $key . ']');
+                if ($key===false) {
+                } else {
+                    $this->io->writeln($key);
+                    unset($basedOn[$key]);
+                    $altered = true;
+                }
+            }
+            if ($altered)
+            {
+                $templateUid = $template['uid'];
+                $basedOn = implode(',', $basedOn);
+                $res = $this->db->query("UPDATE sys_template SET basedOn='$basedOn' WHERE uid=$templateUid");
+                if ($res === false) $this->io->writeln($this->db->error);
+            }
+            $cnt++;
+        }
+        $this->io->writeln('  -> DONE ('.$cnt.' elements)'."\n");
+    }
+
+    /**
+     * for all root-templates,
+     * add "Taketool Sitepackage (sitepackage)" to the end of 'include_static_file' if not exists
+     */
+    private function addSitepackage()
     {
-        $this->setHelp('Migrates root templates to meet v11 requirements');
+        $this->io->section('Migrating root templates: add "Taketool Sitepackage (sitepackage)"');
+        $addInclude = 'EXT:sitepackage/Configuration/TypoScript';
+
+        $this->getAllRootTemplates();
+        $cnt = 0;
+        foreach ($this->rootTemplates as $template)
+        {
+            $altered = false;
+            $includeStaticFiles = explode(',', $template['include_static_file']);
+            if (!in_array($addInclude, $includeStaticFiles))
+            {
+                array_push($includeStaticFiles, $addInclude);
+                $altered = true;
+            }
+            if ($altered)
+            {
+                $templateUid = $template['uid'];
+                $includeStaticFiles = implode(',', $includeStaticFiles);
+                $res = $this->db->query("UPDATE sys_template SET include_static_file='$includeStaticFiles' WHERE uid=$templateUid");
+                if ($res === false) $this->io->writeln($this->db->error);
+            }
+            $cnt++;
+        }
+        $this->io->writeln('  -> DONE ('.$cnt.' elements)'."\n");
     }
 
     private function getAllRootPages()
@@ -133,73 +198,5 @@ class TemplatesCommand extends Command
         $this->io->writeln(($rootTemplatesCleanedUp[0]['config_cleaned'])); die();
         return $rootTemplatesCleanedUp;
     }
-
-    /**
-     * remove "Basis Setup (sys_template_24)" from 'basedOn' if exists
-     * @return void
-     */
-    private function removeBasedOn() {
-        $this->io->section('Migrating root templates: remove "Basis Setup (sys_template_24)" from basedOn if exists');
-        $remove = 'sys_template_24';
-
-        $this->getAllRootTemplates();
-        //$this->io->writeln(serialize($this->rootTemplates));
-
-        $cnt = 0;
-        foreach ($this->rootTemplates as $template)
-        {
-            $altered = false;
-            $basedOn = explode(',', $template['basedOn']);
-            if ($key = array_search($remove, $basedOn))
-            {
-                unset($basedOn[$key]);
-                $altered = true;
-            }
-            if ($altered)
-            {
-                $templateUid = $template['uid'];
-                $includeStaticFiles = implode(',', $basedOn);
-                //\nn\t3::debug(['altered'=>$altered,'uid'=>$template['pid'], 'basedOn'=>$includeStaticFiles]);die();
-                $res = $this->db->query("UPDATE sys_template SET basedOn='$basedOn' WHERE uid=$templateUid");
-                if ($res === false) $this->io->writeln($this->db->error);
-            }
-            $cnt++;
-        }
-        $this->io->writeln('  -> DONE ('.$cnt.' elements)'."\n");
-    }
-
-    /**
-     * for all root-templates,
-     * add "Taketool Sitepackage (sitepackage)" to the end of 'include_static_file' if not exists
-     */
-    private function addSitepackage()
-    {
-        $this->io->section('Migrating root templates: add "Taketool Sitepackage (sitepackage)"');
-        $addInclude = 'EXT:sitepackage/Configuration/TypoScript';
-
-        $this->getAllRootTemplates();
-        $cnt = 0;
-        foreach ($this->rootTemplates as $template)
-        {
-            $altered = false;
-            $includeStaticFiles = explode(',', $template['include_static_file']);
-            if (!in_array($addInclude, $includeStaticFiles))
-            {
-                array_push($includeStaticFiles, $addInclude);
-                $altered = true;
-            }
-            if ($altered)
-            {
-                $templateUid = $template['uid'];
-                $includeStaticFiles = implode(',', $includeStaticFiles);
-                //\nn\t3::debug(['altered'=>$altered,'uid'=>$template['pid'], 'include_static_file'=>$includeStaticFiles]);die();
-                $res = $this->db->query("UPDATE sys_template SET include_static_file='$includeStaticFiles' WHERE uid=$templateUid");
-                if ($res === false) $this->io->writeln($this->db->error);
-            }
-            $cnt++;
-        }
-        $this->io->writeln('  -> DONE ('.$cnt.' elements)'."\n");
-    }
-
 
 }

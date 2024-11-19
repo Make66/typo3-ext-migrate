@@ -10,14 +10,10 @@ use TYPO3\CMS\Core\Database\ConnectionPool;
 
 /*
  * all root templates:
- *  - replace Gridelements (deprecated) with Gridelements (recommended) in field include_static_file
- *  - replace Grids for Bootstrap (deprecated) with Gridelements (recommended) in field include_static_file
- * all tt_content records
- *  - move tt_content element layout to frame_layout
- * all root pages
- *  - add 2 new frame_layout to page TSconfig
+ *  - remove "Basis Setup" from 'basedOn' if exists
+ *  - add "Taketool Sitepackage (sitepackage)" to the end of 'include_static_file' if not exists
  *
- * CLI from domain root: ./typo3/sysext/core/bin/typo3 tool:mig_cotasx2tool
+ * CLI from domain root: ./vendor/bin/typo3 migrate:templates
  */
 
 class TemplatesCommand extends Command
@@ -27,7 +23,6 @@ class TemplatesCommand extends Command
     protected static $defaultName = 'migrate:templates';  //To make your command lazily loaded
     protected \mysqli $db;
     protected SymfonyStyle $io;
-    private string $publicPath;
     private array $rootPages;
     private array $rootTemplates;
 
@@ -44,7 +39,6 @@ class TemplatesCommand extends Command
     {
         $this->io = new SymfonyStyle($input, $output);
         $this->io->title($this->getDescription());
-        $this->io->writeln(str_repeat('=', 65));
 
         // check db connection
         $environment = GeneralUtility::makeInstance(\TYPO3\CMS\Core\Core\Environment::class);
@@ -67,8 +61,8 @@ class TemplatesCommand extends Command
          */
 
         // becomes s/t like "/home/test.taketool.eu/public"
-        $this->publicPath = $environment->getPublicPath();
-        $localConfPath = $this->publicPath.'/typo3conf/LocalConfiguration.php';
+        $publicPath = $environment->getPublicPath();
+        $localConfPath = $publicPath .'/typo3conf/LocalConfiguration.php';
 
         $LC = include $localConfPath;
         $this->io->writeln('Connecting to DB '.$LC['DB']['Connections']['Default']['dbname']);
@@ -83,22 +77,14 @@ class TemplatesCommand extends Command
             return 1;
         } else $this->io->writeln(' -> SUCCESS ');
 
-        // init
+        // init; returns array of rootpage id's
         $this->getAllRootPages();
 
+        //$this->io->writeln(serialize($this->rootPages));
+
         // migration
-        $this->themeScss();
-        $this->globalScss();
-        $this->layoutGallery();
-        $this->layoutRolloverImage();
-        $this->sysFile();
-
-        // do not call twice
-        $this->tsConfig();
-
-
-        //$this->includeStatics();
-        //$this->includeCss();
+        $this->removeBasedOn();
+        $this->addSitepackage();
 
         return 0; // T3v10: Command::SUCCESS;
     }
@@ -108,7 +94,7 @@ class TemplatesCommand extends Command
      */
     protected function configure()
     {
-        $this->setHelp('Migrates various T3v9 content settings to match v10 changes');
+        $this->setHelp('Migrates root templates to meet v11 requirements');
     }
 
     private function getAllRootPages()
@@ -130,7 +116,7 @@ class TemplatesCommand extends Command
      */
     private function getAllRootTemplates()
     {
-        $rootPageIds = implode(',',$this->rootPages);
+        $rootPageIds = implode(',', $this->rootPages);
         $res = $this->db->query("SELECT * FROM sys_template WHERE pid IN ($rootPageIds)");
         $this->io->writeln($this->db->error);
         $this->rootTemplates = $res->fetch_all(MYSQLI_ASSOC);
@@ -149,31 +135,57 @@ class TemplatesCommand extends Command
     }
 
     /**
-     * for all root-templates, replace deprecated include scripts
-     * (not implemented: if $oldInclude2 is not there, add $newInclude2)
+     * remove "Basis Setup (sys_template_24)" from 'basedOn' if exists
+     * @return void
      */
-    private function includeStatics()
-    {
-        $this->io->writeln('Migrating root templates for gridElements');
-        $oldInclude1 = 'EXT:gridelements/Configuration/TypoScript/';
-        $newInclude1 = 'EXT:gridelements/Configuration/TypoScript/DataProcessingLibContentElement';
-        $oldInclude2 = 'EXT:bootstrap_grids/Configuration/TypoScript';
-        $newInclude2 = 'EXT:bootstrap_grids/Configuration/TypoScript/DataProcessingLibContentElement/';
+    private function removeBasedOn() {
+        $this->io->section('Migrating root templates: remove "Basis Setup (sys_template_24)" from basedOn if exists');
+        $remove = 'sys_template_24';
 
-        $rootTemplates = $this->getAllRootTemplates();
+        $this->getAllRootTemplates();
+        //$this->io->writeln(serialize($this->rootTemplates));
+
         $cnt = 0;
-        foreach ($rootTemplates as $template)
+        foreach ($this->rootTemplates as $template)
+        {
+            $altered = false;
+            $basedOn = explode(',', $template['basedOn']);
+            if ($key = array_search($remove, $basedOn))
+            {
+                unset($basedOn[$key]);
+                $altered = true;
+            }
+            if ($altered)
+            {
+                $templateUid = $template['uid'];
+                $includeStaticFiles = implode(',', $basedOn);
+                //\nn\t3::debug(['altered'=>$altered,'uid'=>$template['pid'], 'basedOn'=>$includeStaticFiles]);die();
+                $res = $this->db->query("UPDATE sys_template SET basedOn='$basedOn' WHERE uid=$templateUid");
+                if ($res === false) $this->io->writeln($this->db->error);
+            }
+            $cnt++;
+        }
+        $this->io->writeln('  -> DONE ('.$cnt.' elements)'."\n");
+    }
+
+    /**
+     * for all root-templates,
+     * add "Taketool Sitepackage (sitepackage)" to the end of 'include_static_file' if not exists
+     */
+    private function addSitepackage()
+    {
+        $this->io->section('Migrating root templates: add "Taketool Sitepackage (sitepackage)"');
+        $addInclude = 'EXT:sitepackage/Configuration/TypoScript';
+
+        $this->getAllRootTemplates();
+        $cnt = 0;
+        foreach ($this->rootTemplates as $template)
         {
             $altered = false;
             $includeStaticFiles = explode(',', $template['include_static_file']);
-            if ($key = array_search($oldInclude1, $includeStaticFiles))
+            if (!in_array($addInclude, $includeStaticFiles))
             {
-                $includeStaticFiles[$key] = $newInclude1;
-                $altered = true;
-            }
-            if ($key = array_search($oldInclude2, $includeStaticFiles))
-            {
-                $includeStaticFiles[$key] = $newInclude2;
+                array_push($includeStaticFiles, $addInclude);
                 $altered = true;
             }
             if ($altered)
@@ -189,292 +201,5 @@ class TemplatesCommand extends Command
         $this->io->writeln('  -> DONE ('.$cnt.' elements)'."\n");
     }
 
-
-    /*
-     * for all root-templates, remove page.includeCSS
-     * this is now part of the base-template
-     */
-    private function includeCss()
-    {
-        $this->io->writeln('Migrating root templates for removing includeCss');
-        //$pattern1 = '/(page.includeCSS {)[\s\S]*(}\n)/';  // https://regex101.com/library
-        $l1 = 'styles = fileadmin/templates/_bootstrap_package/Resources/Public/Scss/Theme/global.scss';
-        $l2 = 'styles =  fileadmin/templates/_bootstrap_package/Resources/Public/Scss/Theme/global.scss';
-        $l3 = 'customTemplate = fileadmin/templates/{$mandant}/bootstrap_package/Resources/Public/Scss/Theme/custom.scss';
-
-        $rootTemplates = $this->getAllRootTemplates();
-        $cnt = 0;
-        foreach ($rootTemplates as $template)
-        {
-            $newConstants = str_replace('_img/', 'img/', $template['constants']);
-
-            /* this never works; neither in php nor in MariaDB
-            $newConfig = preg_replace($pattern1, '', $template['config'],1);
-            //$newConfig = preg_replace($pattern2, "\n", $temp);
-            $this->io->writeln($template['pid'].':'.'newConfig=' ."\n" . $newConfig); die();
-            */
-
-            $tempConfig = str_replace('  ', ' ', $template['config']);
-            $tempConfig = str_replace($l1, '', $tempConfig);
-            $tempConfig = str_replace($l2, '', $tempConfig);
-            $tempConfig = str_replace($l3, '', $tempConfig);
-            $tempConfig = str_replace('  ', ' ', $tempConfig);
-            $tempConfig = str_replace('  ', ' ', $tempConfig);
-            $tempConfig = str_replace("\n\n", "\n", $tempConfig);
-            $newConfig = str_replace(" \n", "", $tempConfig);
-
-            $altered = $newConfig != $template['config'] || $newConstants != $template['constants'];
-            if ($altered)
-            {
-                $templateUid = $template['uid'];
-                $sql = "UPDATE sys_template SET config='$newConfig', constants='$newConstants' WHERE uid=$templateUid";
-                $res = $this->db->query($sql);
-                //if ($res === false) $this->io->writeln(str_repeat('=',64)."\npid=".$template['pid']."\nERROR=".$this->db->error. "\n\noriginal SQL=\n" . $sql);
-                if ($res === false) $this->io->writeln("  -> ERROR in template on pid=".$template['pid']);
-            }
-            $cnt++;
-        }
-        $this->io->writeln('  -> DONE ('.$cnt.' elements)'."\n");
-    }
-
-    /**
-     * all tt_content records that contain 'galerie' in field layout,
-     * set field layout to '0' and frame_layout to 'galerie'
-     */
-    private function layoutGallery()
-    {
-        $this->io->writeln('nur Boostrap_Package 12.x: Migrating tt_content layoutGallery()');
-        $res = $this->db->query("SELECT uid,layout,frame_layout FROM tt_content WHERE layout='galerie'");
-        $galleries = $res->fetch_all(MYSQLI_ASSOC);
-        $cnt = 0;
-        foreach($galleries as $gallery)
-        {
-            //\nn\t3::debug($gallery); die();
-            $res = $this->db->query("UPDATE tt_content SET layout='0', frame_layout='galerie' WHERE uid=".$gallery['uid']);
-            if ($res === false) $this->io->writeln($this->db->error);
-            $cnt++;
-        }
-        $this->io->writeln('  -> DONE ('.$cnt.' elements)'."\n");
-    }
-
-    /**
-     * all tt_content records that contain 'rollover_image' in field layout,
-     * set field layout to '0' and frame_layout to 'rollover_image'
-     */
-    private function layoutRolloverImage()
-    {
-        $this->io->writeln('nur Boostrap_Package 12.x: Migrating tt_content layoutGallery()');
-        $res = $this->db->query("SELECT uid,layout,frame_layout FROM tt_content WHERE layout='rollover_image'");
-        $rollovers = $res->fetch_all(MYSQLI_ASSOC);
-        $cnt = 0;
-        foreach($rollovers as $rollover)
-        {
-            //\nn\t3::debug($rollover); die();
-            $res = $this->db->query("UPDATE tt_content SET layout='0', frame_layout='rollover_image' WHERE uid=".$rollover['uid']);
-            if ($res === false) $this->io->writeln($this->db->error);
-            $cnt++;
-        }
-        $this->io->writeln('  -> DONE ('.$cnt.' elements)'."\n");
-    }
-
-
-    /**
-     * add line 'TCEFORM.tt_content.frame_layout.addItems.galerie = Galerie' to page TSconfig
-     * add line 'TCEFORM.tt_content.frame_layout.addItems.rollover_image = Bild mit Hover-Effekt' to page TSconfig
-     */
-    private function tsConfig()
-    {
-        $this->io->writeln('nur Boostrap_Package 12.x: Migrating TSconfig adding galerie and rollover_image types');
-        $cnt = 0;
-
-        foreach($this->rootPages as $pageUid)
-        {
-            $res = $this->db->query("SELECT TSconfig FROM pages WHERE uid=".$pageUid);
-            $tsConfig = $res->fetch_assoc();
-            $newTsConfig = "'"
-                . $tsConfig['TSconfig']
-                . "\nTCEFORM.tt_content.frame_layout.addItems.galerie = Galerie"
-                . "\nTCEFORM.tt_content.frame_layout.addItems.rollover_image = Bild mit Hover-Effekt'";
-            $sql = "UPDATE pages SET `TSconfig`=" . $newTsConfig . " WHERE uid=".$pageUid;
-            //\nn\t3::debug($newTsConfig); die();
-            //$this->io->writeln($sql); die();
-
-            $res = $this->db->query($sql);
-            if ($res === false) $this->io->writeln($this->db->error);
-            $cnt++;
-        }
-        $this->io->writeln('  -> DONE ('.$cnt.' elements)'."\n");
-    }
-
-    /**
-     * adapts path's in global.scss
-     *
-     */
-    private function globalScss()
-    {
-        $this->io->writeln('Corrects path\'s in global.scss');
-        $globalScssPath = $this->publicPath . '/fileadmin//templates/ext/bootstrap_package/Resources/Public/Scss/Theme/global.scss';
-        $replace = [
-            '/fileadmin/templates/tx_' => '/fileadmin/templates/ext/',
-        ];
-
-        if (file_exists($globalScssPath))
-        {
-            $globalScssContent = file_get_contents($globalScssPath);
-            $newContent = $globalScssContent;
-            foreach ($replace as $search=>$repl)
-            {
-                $newContent = str_replace($search, $repl, $newContent);
-            }
-            $handle = fopen($globalScssPath, "w");
-            if ($handle === false)
-            {
-                $this->io->writeln('   ! error opening file ' . $globalScssPath . "\n");
-            } else {
-                fwrite($handle, $newContent);
-                fclose($handle);
-                $this->io->writeln('   processed file ' . $globalScssPath . "\n");
-            }
-        }
-    }
-
-    /**
-     * create a file theme.css under each templates/mandant/ directory
-     * and fills it with three lines of code:
-     *  @ import "../../../typo3conf/ext/bootstrap_package/Resources/Public/Scss/Theme/theme";
-     *  @ import "../bootstrap_package/Resources/Public/Scss/Theme/global";
-     *  @ import "bootstrap_package/Resources/Public/Scss/Theme/custom";
-     */
-    private function themeScss()
-    {
-        $this->io->writeln('Create a theme.css for every mandant');
-        $path = $this->publicPath . '/fileadmin/templates';
-        $d = dir($path);
-
-        /*
-        $customToDelete = [
-            '@import "typo3conf/ext/bootstrap_package/Resources/Public/Contrib/bootstrap4/scss/_functions.scss";',
-            '@import "typo3conf/ext/bootstrap_package/Resources/Public/Contrib/bootstrap4/scss/_variables.scss";',
-            '@import "typo3conf/ext/bootstrap_package/Resources/Public/Contrib/bootstrap4/scss/mixins/_breakpoints.scss";',
-        ];
-        */
-        $imports =
-            '@import "../../../typo3conf/ext/bootstrap_package/Resources/Public/Scss/bootstrap5/theme";'."\n"
-            .'@import "../../../fileadmin/templates/ext/bootstrap_package/Resources/Public/Scss/Theme/global";'."\n"
-            .'@import "./bootstrap_package/Resources/Public/Scss/Theme/custom";'."\n";
-
-        $this->io->writeln( "     Path: " . $d->path);
-        $cnt = 0;
-        while (false !== ($mandant = $d->read())) {
-
-            /*
-             *  create theme.scss and insert standard imports
-             */
-            $themePath = $path.'/'.$mandant;
-            $skipDot = substr($mandant,0,1) === '.';
-            $skipUl = substr($mandant,0,1) === '_';
-            $skipExt = substr($mandant,0,3) === 'ext';
-            if ($skipUl || $skipDot || $skipExt) continue;
-            if (file_exists($themePath))
-            {
-                $filepath = $themePath.'/theme.scss';
-                $this->io->writeln('     writing to '.$filepath);
-                $handle = fopen($filepath, "w");
-                if ($handle === false)
-                {
-                    $this->io->writeln('   ! error opening file '.$filepath);
-                    continue;
-                }
-                fwrite($handle, $imports);
-                fclose($handle);
-                chmod($filepath, 0660);
-                //unlink($path.'/'.$entry.'/theme.css');
-            }
-
-            /*
-             * custom.scss clean up
-
-            $customPath = $this->publicPath . "/fileadmin/templates/$mandant/bootstrap_package/Resources/Public/Scss/Theme/custom.scss";
-            if (file_exists($customPath))
-            {
-                $this->io->writeln('     processing '.$customPath);
-                $oldCustom = file_get_contents($customPath);
-                foreach($customToDelete as $del)
-                {
-                    $newCustom = str_replace($del, '', $oldCustom);
-                    $oldCustom = $newCustom;
-                }
-                $newCustom = str_replace('_img/', 'img/', $oldCustom);
-
-                $handle = fopen($customPath, "w");
-                if ($handle === false)
-                {
-                    $this->io->writeln('   ! error opening file '.$customPath);
-                    continue;
-                }
-                fwrite($handle, $newCustom);
-                fclose($handle);
-                chmod($customPath, 0660);
-            }
-
-            // rename dir mandant/_img if exists
-            if (file_exists($themePath.'/_img'))
-            {
-                rename($themePath.'/_img', $themePath.'/img');
-            }
-
-            // delete old _img directories
-            $customPath = $this->publicPath . "/fileadmin/templates/$mandant/bootstrap_package/Resources/Public/Scss/Theme/_img";
-            if (file_exists($customPath))
-            {
-                array_map('unlink', glob($customPath."/*.*"));
-                rmdir($customPath);
-            }
-            // update sys_file for /_img/
-            // UPDATE sys_file f
-            //    SET f.identifier = REPLACE (f.identifier, '/_img/', '/img/')
-            //    WHERE f.identifier LIKE '%/_img/%'
-            //    Select identifier from sys_file where identifier like '%stroh/img/%' limit 50;
-            $sql = "UPDATE sys_file f
-                    SET f.identifier = REPLACE (f.identifier, '/_img/', '/img/')
-                    WHERE f.identifier LIKE '%/_img/%'";
-            $res = $this->db->query($sql);
-            */
-            $cnt++;
-        }
-        $d->close();
-        $this->io->writeln('  -> DONE ('.$cnt.' elements)'."\n");
-    }
-
-    /**
-     * when the path of files change, sys_file needs to know the new identifier
-     *
-     * @return void
-     */
-    private function sysFile()
-    {
-        // old => new
-        $replaces = [
-            '/templates/bootstrap_package/' => '/templates/ext/bootstrap_package/',
-            '/templates/_bootstrap_package/' => '/templates/ext/bootstrap_package/',
-        ];
-
-        $this->io->writeln('Update path information in sys_file');
-        $cnt = 0;
-        foreach($replaces as $search=>$repl)
-        {
-            // UPDATE sys_file f
-            //    SET f.identifier = REPLACE (f.identifier, '/_img/', '/img/')
-            //    WHERE f.identifier LIKE '%/_img/%'
-            //    Select identifier from sys_file where identifier like '%stroh/img/%' limit 50;
-            $sql = "UPDATE sys_file f
-                    SET f.identifier = REPLACE (f.identifier, '$search', '$repl')
-                    WHERE f.identifier LIKE '%$search%'";
-            $res = $this->db->query($sql);
-            $cnt += $res->num_rows;
-        }
-        $this->io->writeln('  -> DONE ('.$cnt.' elements)'."\n");
-
-    }
 
 }
